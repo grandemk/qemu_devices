@@ -40,6 +40,7 @@ static irqreturn_t hello_tic_handler(int irq, void *dev_info)
         outl(0, info->port[0].start );
         return IRQ_HANDLED;
     } else {
+        /* not mine, we have done nothing */
         return IRQ_NONE;
     }
 }
@@ -54,6 +55,7 @@ static int hello_tic_probe(struct pci_dev *dev, const struct pci_device_id *id)
 
     if (pci_enable_device(dev))
         goto out_free;
+
     pr_alert("enabled device\n");
 
     if (pci_request_regions(dev, "hello_tic"))
@@ -72,11 +74,12 @@ static int hello_tic_probe(struct pci_dev *dev, const struct pci_device_id *id)
     info->mem[0].size = pci_resource_len(dev, 1);
     if (!info->mem[0].start)
         goto out_unrequest;
+
     pr_alert("remaped addr for kernel uses\n");
 
 
 
-    /* get pci irq */
+    /* get device irq number */
     if (pci_read_config_byte(dev, PCI_INTERRUPT_LINE, &info->irq))
         goto out_iounmap;
 
@@ -84,11 +87,11 @@ static int hello_tic_probe(struct pci_dev *dev, const struct pci_device_id *id)
     if (devm_request_irq(&dev->dev, info->irq, hello_tic_handler, IRQF_SHARED, hello_tic.name, (void *) info))
         goto out_iounmap;
 
-    /* test io memory operations */
+    /* get a mmio reg value and change it */
     pr_alert("device id=%x\n", ioread32(info->mem[0].start + 4));
     iowrite32(0x4567, info->mem[0].start + 4);
     pr_alert("modified device id=%x\n", ioread32(info->mem[0].start + 4));
-    /* try writing io ports */
+
     /* assert an irq */
     outb(1, info->port[0].start);
     /* try dma without iommu */
@@ -114,8 +117,11 @@ out_free:
 
 static void hello_tic_remove(struct pci_dev *dev)
 {
+    /* we get back the driver data we store in
+     * the pci_dev struct */
     struct tic_info *info = pci_get_drvdata(dev);
 
+    /* let's clean a little */
     pci_release_regions(dev);
     pci_disable_device(dev);
     iounmap(info->mem[0].start);
@@ -125,12 +131,21 @@ static void hello_tic_remove(struct pci_dev *dev)
 }
 
 
+/* vendor and device (+ subdevice and subvendor)
+ * identifies a device we support
+ */
 static struct pci_device_id hello_tic_ids[] = {
     
     { PCI_DEVICE(PCI_TIC_VENDOR, PCI_TIC_DEVICE) },
     { 0, },
 };
 
+/* id_table describe the device this driver support
+ * probe is called when a device we support exist and
+ * when we are chosen to drive it.
+ * remove is called when the driver is unloaded or
+ * when the device disappears
+ */
 static struct pci_driver hello_tic = {
     .name = "hello_tic",
     .id_table = hello_tic_ids,
@@ -138,7 +153,10 @@ static struct pci_driver hello_tic = {
     .remove = hello_tic_remove,
 };
 
+/* register driver in kernel pci framework */
 module_pci_driver(hello_tic);
 MODULE_DEVICE_TABLE(pci, hello_tic_ids);
+
 MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("hello world");
 MODULE_AUTHOR("Kevin Grandemange");
