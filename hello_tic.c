@@ -4,7 +4,6 @@
 #include <time.h>
 #include "qemu/osdep.h"
 
-
 typedef struct PCIHelloDevState {
     PCIDevice parent_obj;
 
@@ -13,53 +12,112 @@ typedef struct PCIHelloDevState {
     /* for MMIO */
     MemoryRegion mmio;
     qemu_irq irq;
+    unsigned int dma_size;
+    char *dma_buf;
+    int threw_irq;
+    int id;
+
 
 } PCIHelloDevState;
 
 #define TYPE_PCI_HELLO_DEV "pci-hellodev"
 #define PCI_HELLO_DEV(obj)     OBJECT_CHECK(PCIHelloDevState, (obj), TYPE_PCI_HELLO_DEV)
+#define HELLO_IO_SIZE 1<<4
+#define HELLO_MMIO_SIZE 1<<6
+
 
 static void hello_iowrite(void *opaque, hwaddr addr, uint64_t value, unsigned size)
 {
     int i;
+    PCIHelloDevState *d = (PCIHelloDevState *) opaque;
+    PCIDevice *pci_dev = (PCIDevice *) opaque;
+
     printf("Write Ordered, addr=%x, value=%lu, size=%d\n", (unsigned) addr, value, size);
-    /* trigger a dma in vga adress space */
-    char *buf = malloc(0x1ffff * sizeof(char));
-    for ( i = 0; i < 0x1ffff; ++i)
-        buf[i] = rand();
-    cpu_physical_memory_write(0xa0000, (void *) buf, 0x1ffff);
+
+    switch (addr) {
+        case 0:
+            if (value) {
+                /* throw an interrupt */
+                printf("irq assert\n");
+                d->threw_irq = 1;
+                pci_irq_assert(pci_dev);
+
+            } else {
+                /*  ack interrupt */
+                printf("irq deassert\n");
+                pci_irq_deassert(pci_dev);
+                d->threw_irq = 0;
+            }
+            break;
+        case 4:
+            /* throw a random DMA */
+            for ( i = 0; i < d->dma_size; ++i)
+                d->dma_buf[i] = rand();
+            cpu_physical_memory_write(0xa0000, (void *) d->dma_buf, d->dma_size);
+            break;
+        default:
+            printf("Io not used\n");
+            
+    }
 
 }
 
 static uint64_t hello_ioread(void *opaque, hwaddr addr, unsigned size)
 {
-    PCIDevice *pci_dev = (PCIDevice *) opaque;
+    PCIHelloDevState *d = (PCIHelloDevState *) opaque;
     /* trigger irq */
     /* just playing around with this
      * we need a pci driver to
      * really test this
      */
-    pci_set_irq(pci_dev, 1);
     printf("Read Ordered, addr =%x, size=%d\n", (unsigned) addr, size);
-    if (addr == 0) {
-        printf("irq assert\n");
-        pci_irq_assert(pci_dev);
-    } else {
-        printf("irq deassert\n");
-        pci_irq_deassert(pci_dev);
+    switch (addr) {
+        case 0:
+            /* irq status */
+            return d->threw_irq;
+            break;
+        default:
+            printf("Io not used\n");
+            return 0x0;
+            
     }
-    return 0xabcdef;
 }
 
 static uint64_t hello_mmioread(void *opaque, hwaddr addr, unsigned size)
 {
+    PCIHelloDevState *d = (PCIHelloDevState *) opaque;
     printf("MMIO Read Ordered, addr =%x, size=%d\n",(unsigned)  addr, size);
-    return 0xabcdef;
+    switch (addr) {
+        case 0:
+            /* also irq status */   
+            printf("irq_status\n");
+            return d->threw_irq;
+            break;
+        case 4:
+            /* Id of the device */
+            printf("id\n");
+            return d->id;
+            break;
+        default:
+            printf("MMIO not used\n");
+            return 0x0;
+            
+    }
 }
 
 static void hello_mmiowrite(void *opaque, hwaddr addr, uint64_t value, unsigned size)
 {
+    PCIHelloDevState *d = (PCIHelloDevState *) opaque;
     printf("MMIO write Ordered, addr=%x, value=%lu, size=%d\n",(unsigned)  addr, value, size);
+    switch (addr) {
+        case 4:
+            /* change the id */
+            d->id = value;
+            break;
+        default:
+            printf("MMIO not writable or not used\n");
+            
+    }
 }
 
 
@@ -97,14 +155,19 @@ static const MemoryRegionOps hello_io_ops = {
 /* Callback for MMIO and PIO regions are registered here */
 static void hello_io_setup(PCIHelloDevState *d) 
 {
-    memory_region_init_io(&d->mmio, OBJECT(d), &hello_mmio_ops, d, "hello_mmio", 1<<6);
-    memory_region_init_io(&d->io, OBJECT(d), &hello_io_ops, d, "hello_io", R_MAX*4);
+    memory_region_init_io(&d->mmio, OBJECT(d), &hello_mmio_ops, d, "hello_mmio", HELLO_MMIO_SIZE);
+    memory_region_init_io(&d->io, OBJECT(d), &hello_io_ops, d, "hello_io", HELLO_IO_SIZE);
 }
 
+/* When device is loaded */
 static int pci_hellodev_init(PCIDevice *pci_dev)
 {
     PCIHelloDevState *d = PCI_HELLO_DEV(pci_dev);
     printf("d=%lu\n", (unsigned long) &d);
+    d->dma_size = 0x1ffff * sizeof(char);
+    d->dma_buf = malloc(d->dma_size);
+    d->id = 0x1337;
+    d->threw_irq = 0;
     uint8_t *pci_conf;
 
     hello_io_setup(d);
@@ -126,15 +189,16 @@ static int pci_hellodev_init(PCIDevice *pci_dev)
     return 0;
 }
 
-/* When device is loaded */
-static void pci_hellodev_uninit(PCIDevice *dev)
-{
-    printf("Good bye World unloaded\n");
-}
-
 /* When device is unloaded 
  * Can be useful for hot(un)plugging
  */
+static void pci_hellodev_uninit(PCIDevice *dev)
+{
+    PCIHelloDevState *d = (PCIHelloDevState *) dev;
+    free(d->dma_buf);
+    printf("Good bye World unloaded\n");
+}
+
 static void qdev_pci_hellodev_reset(DeviceState *dev)
 {
     printf("Reset World\n");

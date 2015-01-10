@@ -14,9 +14,8 @@
 static struct pci_driver hello_tic;
 struct tic_mem {
     const char *name;
-    phys_addr_t addr;
+    void __iomem *start;
     unsigned long size;
-    void __iomem *internal_addr;
 };
 
 struct tic_io {
@@ -33,8 +32,16 @@ struct tic_info {
 
 static irqreturn_t hello_tic_handler(int irq, void *dev_info)
 {
+    struct tic_info *info = (struct tic_info *) dev_info;
     pr_alert("IRQ %d handled\n", irq);
-    return IRQ_HANDLED;
+    /* is it our device throwing an interrupt ? */
+    if (inl(info->port[0].start)) {
+        /* deassert it */
+        outl(0, info->port[0].start );
+        return IRQ_HANDLED;
+    } else {
+        return IRQ_NONE;
+    }
 }
 
 
@@ -60,9 +67,10 @@ static int hello_tic_probe(struct pci_dev *dev, const struct pci_device_id *id)
     info->port[0].size = pci_resource_len(dev, 0);
 
     /* BAR 1 has MMIO */
-    info->mem[0].internal_addr = pci_ioremap_bar(dev, 1);
+    info->mem[0].name = "tic-mmio";
+    info->mem[0].start = pci_ioremap_bar(dev, 1);
     info->mem[0].size = pci_resource_len(dev, 1);
-    if (!info->mem[0].internal_addr)
+    if (!info->mem[0].start)
         goto out_unrequest;
     pr_alert("remaped addr for kernel uses\n");
 
@@ -76,28 +84,22 @@ static int hello_tic_probe(struct pci_dev *dev, const struct pci_device_id *id)
     if (devm_request_irq(&dev->dev, info->irq, hello_tic_handler, IRQF_SHARED, hello_tic.name, (void *) info))
         goto out_iounmap;
 
-    /* test io operations */
-    ioread32((void *) info->mem[0].internal_addr);
-    ioread16((void *) info->mem[0].internal_addr + 4);
-    ioread8((void *) info->mem[0].internal_addr + 8);
-
-    iowrite32(4, (void *) info->mem[0].internal_addr + 4);
-    iowrite16(4, (void *) info->mem[0].internal_addr + 8);
-    iowrite8(4, (void *) info->mem[0].internal_addr);
-
-    outb(4, info->port[0].start);
-    outw(5, info->port[0].start);
-    outl(6, info->port[0].start);
-    inb(info->port[0].start);
-    inw(info->port[0].start);
-    inl(info->port[0].start);
+    /* test io memory operations */
+    pr_alert("device id=%x\n", ioread32(info->mem[0].start + 4));
+    iowrite32(0x4567, info->mem[0].start + 4);
+    pr_alert("modified device id=%x\n", ioread32(info->mem[0].start + 4));
+    /* try writing io ports */
+    /* assert an irq */
+    outb(1, info->port[0].start);
+    /* try dma without iommu */
+    outl(1, info->port[0].start + 4);
 
     pci_set_drvdata(dev, info);
     return 0;
 
 out_iounmap:
     pr_alert("tic:probe_out:iounmap");
-    iounmap(info->mem[0].internal_addr);
+    iounmap(info->mem[0].start);
 out_unrequest:
     pr_alert("tic:probe_out_unrequest\n");
     pci_release_regions(dev);
@@ -116,7 +118,7 @@ static void hello_tic_remove(struct pci_dev *dev)
 
     pci_release_regions(dev);
     pci_disable_device(dev);
-    iounmap(info->mem[0].internal_addr);
+    iounmap(info->mem[0].start);
 
     kfree(info);
 
