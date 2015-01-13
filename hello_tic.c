@@ -193,7 +193,7 @@ static int pci_hellodev_init(PCIDevice *pci_dev)
     pci_conf[PCI_INTERRUPT_PIN] = 0x02; 
 
     /* this device support interrupt */
-    d->irq = pci_allocate_irq(pci_dev);
+    //d->irq = pci_allocate_irq(pci_dev);
 
     printf("Hello World loaded\n");
     return 0;
