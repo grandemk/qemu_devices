@@ -1,3 +1,21 @@
+/*
+ * PCI Device HelloWorld
+ * Copyright (C) 2015 Kevin Grandemange
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+ 
+
+
 #include "hw/hw.h"
 #include "hw/pci/pci.h"
 #include "qemu/event_notifier.h"
@@ -59,7 +77,7 @@ static void hello_iowrite(void *opaque, hwaddr addr, uint64_t value, unsigned si
             /* throw a random DMA */
             for ( i = 0; i < d->dma_size; ++i)
                 d->dma_buf[i] = rand();
-            cpu_physical_memory_write(0xa0000, (void *) d->dma_buf, d->dma_size);
+            cpu_physical_memory_write(value, (void *) d->dma_buf, d->dma_size);
             break;
         default:
             printf("Io not used\n");
