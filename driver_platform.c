@@ -25,7 +25,6 @@ static struct dev test_dev;
 
 static irqreturn_t test_interrupt(int irq, void *data)
 {
-    struct dev *tdev = (struct dev*) data;
     pr_alert("SYSBUS IRQ\n");
     /* do irq stuff */
     return IRQ_HANDLED;
@@ -39,24 +38,28 @@ static int test_probe(struct platform_device *pdev)
     pr_alert("SYSBUS PROBE\n");
     res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
     tdev->regs = devm_ioremap_resource(&pdev->dev, res);
-    iowrite32(34, tdev->regs);
-    pr_alert("probe read: %d\n", ioread32(tdev->regs));
 
     if (IS_ERR(tdev->regs))
         return PTR_ERR(tdev->regs);
     irq = platform_get_irq(pdev, 0);
+    pr_alert("irq=%d\n", irq);
     if (irq < 0) {
         dev_err(&pdev->dev, "missing irq\n");
         err = irq;
         return err;
+    }
+    pr_alert("requesting irq\n");
     err = devm_request_irq(&pdev->dev, irq, test_interrupt, IRQF_SHARED, dev_name(&pdev->dev),tdev);
     if (err) {
         dev_err(&pdev->dev, "failed to request IRQ #%d -> :%d\n",
                 irq, err);
         return err;
     }
+    pr_alert("requested irq\n");
 
-    }
+    iowrite32(34, tdev->regs);
+    pr_alert("probe read: %d\n", ioread32(tdev->regs));
+
 
     return 0;
 }

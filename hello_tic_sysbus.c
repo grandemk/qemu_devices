@@ -18,6 +18,7 @@
 
 #include <hw/sysbus.h>
 #include <hw/qdev.h>
+#include <hw/irq.h>
 #define TYPE_DUMMY "test_tic"
 #define DUMMY_SIZE (1 << 10)
 #define DUMMY(obj)\
@@ -40,14 +41,23 @@ static void dummy_write(void *opaque, hwaddr addr,
                          uint64_t val, unsigned size)
 {
 
+    DummyState *dummy = DUMMY(opaque);
     printf("DUMMY. MMIO write Ordered, addr=%x, value=%lu, size=%d\n",(unsigned)  addr, val, size);
+    /* let's say writing somewhere trigger a pulse irq */
+    printf("pulsing irq\n");
+    qemu_irq_pulse(dummy->irq);
+    printf("irq up\n");
+    qemu_irq_raise(dummy->irq);
 
 }
 
 static uint64_t dummy_read(void *opaque, hwaddr addr,
                            unsigned size)
 {
+    DummyState *dummy = DUMMY(opaque);
     printf("DUMMY. MMIO Read Ordered, addr =%x, size=%d\n",(unsigned)  addr, size);
+    printf("irq down\n");
+    qemu_irq_lower(dummy->irq);
     return 0;
 }
 
@@ -68,16 +78,16 @@ static const VMStateDescription dummy_vmstate = {
     }
 };
 
-static int dummy_init(SysBusDevice *dev)
+static void dummy_init(Object *obj)
 {
-    DummyState *s = DUMMY(dev);
+    SysBusDevice *dev = SYS_BUS_DEVICE(obj);
+    DummyState *s = DUMMY(obj);
     fprintf(stderr, "INIT\n");
     memory_region_init_io(&s->iomem, OBJECT(s), &dummy_mem_ops, s, "dummy",
             DUMMY_SIZE);
     sysbus_init_mmio(dev, &s->iomem);
     sysbus_init_irq(dev, &s->irq);
 
-    return 0;
 }
 
 
@@ -86,12 +96,16 @@ static Property dummy_properties[] = {
 };
 
 
+static void dummy_realize(DeviceState *dev, Error **errp)
+{  
+    printf("Do you realize ?\n");
+}
+
 static void dummy_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-    SysBusDeviceClass *k = SYS_BUS_DEVICE_CLASS(klass);
 
-    k->init = dummy_init;
+    dc->realize = dummy_realize;
     dc->reset = dummy_reset;
     dc->vmsd = &dummy_vmstate;
     dc->props = dummy_properties;
@@ -104,6 +118,7 @@ static const TypeInfo dummy_info = {
     .name          = TYPE_DUMMY,
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(DummyState),
+    .instance_init = dummy_init,
     .class_init    = dummy_class_init,
 
 };
