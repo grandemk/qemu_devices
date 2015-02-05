@@ -17,7 +17,8 @@
 
 
 #include <hw/sysbus.h>
-#define TYPE_DUMMY "dummy"
+#include <hw/qdev.h>
+#define TYPE_DUMMY "test_tic"
 #define DUMMY_SIZE (1 << 10)
 #define DUMMY(obj)\
     OBJECT_CHECK(DummyState, (obj), TYPE_DUMMY)
@@ -39,14 +40,14 @@ static void dummy_write(void *opaque, hwaddr addr,
                          uint64_t val, unsigned size)
 {
 
-    printf("MMIO write Ordered, addr=%x, value=%lu, size=%d\n",(unsigned)  addr, val, size);
+    printf("DUMMY. MMIO write Ordered, addr=%x, value=%lu, size=%d\n",(unsigned)  addr, val, size);
 
 }
 
 static uint64_t dummy_read(void *opaque, hwaddr addr,
                            unsigned size)
 {
-    printf("MMIO Read Ordered, addr =%x, size=%d\n",(unsigned)  addr, size);
+    printf("DUMMY. MMIO Read Ordered, addr =%x, size=%d\n",(unsigned)  addr, size);
     return 0;
 }
 
@@ -59,7 +60,7 @@ static const MemoryRegionOps dummy_mem_ops = {
 
 /* for migration */
 static const VMStateDescription dummy_vmstate = {
-    .name = "dummy",
+    .name = "test_tic",
     .version_id = 1,
     .minimum_version_id = 1,
     .fields = (VMStateField[]) {
@@ -70,6 +71,7 @@ static const VMStateDescription dummy_vmstate = {
 static int dummy_init(SysBusDevice *dev)
 {
     DummyState *s = DUMMY(dev);
+    fprintf(stderr, "INIT\n");
     memory_region_init_io(&s->iomem, OBJECT(s), &dummy_mem_ops, s, "dummy",
             DUMMY_SIZE);
     sysbus_init_mmio(dev, &s->iomem);
@@ -80,7 +82,7 @@ static int dummy_init(SysBusDevice *dev)
 
 
 static Property dummy_properties[] = {
-    {.name = NULL},
+    DEFINE_PROP_END_OF_LIST(),
 };
 
 
@@ -104,7 +106,7 @@ static const TypeInfo dummy_info = {
     .instance_size = sizeof(DummyState),
     .class_init    = dummy_class_init,
 
-}
+};
 
 
 static void dummy_register_types(void)

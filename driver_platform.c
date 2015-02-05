@@ -26,6 +26,7 @@ static struct dev test_dev;
 static irqreturn_t test_interrupt(int irq, void *data)
 {
     struct dev *tdev = (struct dev*) data;
+    pr_alert("SYSBUS IRQ\n");
     /* do irq stuff */
     return IRQ_HANDLED;
 }
@@ -35,8 +36,12 @@ static int test_probe(struct platform_device *pdev)
     struct dev *tdev = &test_dev;
     int err, irq;
     struct resource *res;
+    pr_alert("SYSBUS PROBE\n");
     res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
     tdev->regs = devm_ioremap_resource(&pdev->dev, res);
+    iowrite32(34, tdev->regs);
+    pr_alert("probe read: %d\n", ioread32(tdev->regs));
+
     if (IS_ERR(tdev->regs))
         return PTR_ERR(tdev->regs);
     irq = platform_get_irq(pdev, 0);
@@ -58,11 +63,12 @@ static int test_probe(struct platform_device *pdev)
 
 static int test_remove(struct platform_device *pdev)
 {
+    pr_alert("SYSBUS REMOVE\n");
     return 0;
 }
 
 static const struct of_device_id test_of_match[] = {
-    { .compatible = "tic_test", },
+    { .compatible = "tic_test"},
     {}
 };
 MODULE_DEVICE_TABLE(of, test_of_match);
