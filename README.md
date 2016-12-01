@@ -1,8 +1,8 @@
-qemu_devices
-============
+# qemu_devices
 
-# Hello World PCI device for qemu
-Emulate:
+## Hello World PCI device for qemu
+
+### List of supported features the device emulate:
 
    - MMIO
    - PIO
@@ -11,7 +11,8 @@ Emulate:
 
 Hello World PCI driver for it. (linux 3.2, with little tweek it should work with 2.6 too (I use devm framework in some place))
 
-## install
+### install
+
 As this repo just contains the files for the device, you need to integrate it in Qemu.
 To do that:
     copy hello_tic.c in hw/char for example and add it to the Makefile too then make
@@ -19,12 +20,11 @@ To do that:
 For the driver, you need to compile it with you kernel of choice 
 insmoding the driver will test the device
 
-
-## Qemu cmdline:
+### Qemu cmdline:
 
 i386-softmmu/qemu-system-i386  yourimg.qcow2 -device pci-hellodev --enable-kvm -monitor stdio
 
-# Hello World Sysbus device
+## Hello World Sysbus device
 
 Notice: Use this only as inspiration to create your own device.
 You should use the device tree way in qemu-arm and not the verstatilepb platform
